@@ -1,0 +1,120 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TF.js + Three.js Heatmap Overlay</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
+        #info { position: absolute; top: 10px; left: 10px; color: white; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="info">TF.js Analysis: <span id="status">Processing...</span></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0"></script>
+
+    <script>
+        let scene, camera, renderer, model, heatmapTexture, canvas, ctx;
+        const CANVAS_SIZE = 512;
+
+        init();
+        setupHeatmapCanvas();
+        animate();
+
+        function init() {
+            // 1. Three.js Setup
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 3;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(1, 1, 2);
+            scene.add(light, new THREE.AmbientLight(0x404040));
+
+            // 2. Create Model (Placeholder Sphere)
+            // In a real app, use GLTFLoader to load your specific model
+            const geometry = new THREE.SphereGeometry(1, 64, 64);
+            
+            // 3. Create Heatmap Texture from Canvas
+            canvas = document.createElement('canvas');
+            canvas.width = canvas.height = CANVAS_SIZE;
+            ctx = canvas.getContext('2d');
+            
+            heatmapTexture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.MeshStandardMaterial({
+                map: heatmapTexture,
+                roughness: 0.5,
+                metalness: 0.2
+            });
+
+            model = new THREE.Mesh(geometry, material);
+            scene.add(model);
+        }
+
+        function setupHeatmapCanvas() {
+            // Fill background
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            heatmapTexture.needsUpdate = true;
+        }
+
+        async function runInference() {
+            // Simulating TF.js finding "weak points"
+            // This would normally be: const prediction = model.predict(inputTensor);
+            const statusEl = document.getElementById('status');
+            
+            // Generate a random 2D tensor representing heat values
+            const heatData = tf.tidy(() => {
+                return tf.randomUniform([10, 3], 0, CANVAS_SIZE); 
+            });
+
+            const points = await heatData.array();
+            
+            // Update Canvas with "Heat"
+            points.forEach(p => {
+                drawHeatPoint(p[0], p[1], p[2] / 5); // x, y, radius
+            });
+
+            statusEl.innerText = "Heatmap Active";
+            heatData.dispose();
+        }
+
+        function drawHeatPoint(x, y, radius) {
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 10);
+            gradient.addColorStop(0, 'rgba(255, 0, 0, 1)');   // Hot (Weak)
+            gradient.addColorStop(0.5, 'rgba(255, 255, 0, 0.5)'); 
+            gradient.addColorStop(1, 'rgba(0, 0, 255, 0)');   // Cold (Strong)
+
+            ctx.fillStyle = gradient;
+            ctx.globalCompositeOperation = 'screen';
+            ctx.beginPath();
+            ctx.arc(x, y, radius * 10, 0, Math.PI * 2);
+            ctx.fill();
+            heatmapTexture.needsUpdate = true;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (model) {
+                model.rotation.y += 0.005;
+                // Periodically simulate new data
+                if (Math.random() > 0.98) runInference(); 
+            }
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
